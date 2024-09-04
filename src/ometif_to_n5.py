@@ -254,7 +254,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.compression=='raw':
+    if args.compression == 'raw':
         compressor = None
     else:
         compressor = codecs.get_codec(dict(id=args.compression))

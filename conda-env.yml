@@ -1,12 +1,11 @@
 channels:
   - conda-forge
-  - defaults
 dependencies:
   - python=3.11
   - pip
-  - dask=2023.10.1
-  - dask-image=2023.08.1
-  - distributed=2023.10.1
+  - dask=2024.4.1
+  - distributed=2024.4.1
+  - dask-image=2024.08.1
   - flatten_json
   - numpy>=1.26.0
   - pyyaml
@@ -14,5 +13,4 @@ dependencies:
   - tqdm=4.66.1
   - zarr=2.16.1
   - pip:
-    - xarray-multiscale==2.0.0
     - ome-types

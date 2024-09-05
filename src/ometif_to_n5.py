@@ -188,16 +188,17 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
                                   for i,s in enumerate(block_data.shape)])
 
             channel_data = block_data[ch_selection]
-            output_coords = tuple([block_coords[indexed_dims['z']],
-                                   block_coords[indexed_dims['y']],
-                                   block_coords[indexed_dims['x']]])
+            output_block_coords = tuple([block_coords[indexed_dims['z']],
+                                         block_coords[indexed_dims['y']],
+                                         block_coords[indexed_dims['x']]])
             print(f'{time.ctime(time.time())} '
-                f'Write {channel_data.shape} block for {ch_selection} at {output_coords} ',
-                'from block {block_index}',
+                f'Write {channel_data.shape} block for {ch_selection} '
+                f'at {output_block_coords} from block {block_index}',
                 flush=True)
 
-            output_block_coords = block_coords[1:]
             per_channel_outputs[ch][output_block_coords] = channel_data
+
+        return block_index
 
 
 def _save_block(block, block_index, block_coords,

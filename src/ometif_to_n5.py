@@ -82,14 +82,15 @@ def _ometif_to_n5_volume(input_path, output_path,
 
         print(f'Input tiff info - ',
               f'ome: {ome.images[0]},',
-              f'dims: {dims} ', 
-              f'scale: {scale} ',
-              f'start_point: {data_start}',
-              f'shape: {data_shape}',
-              f'channels: {n_channels}',
-              f'volume_start: {volume_start}',
-              f'volume_end: {volume_end}',
-              f'volume_shape: {volume_shape}',
+              f'dims: {dims}, ', 
+              f'indexed_dims: {indexed_dims}, ',
+              f'scale: {scale}, ',
+              f'start_point: {data_start}, ',
+              f'shape: {data_shape}, ',
+              f'channels: {n_channels}, ',
+              f'volume_start: {volume_start}, ',
+              f'volume_end: {volume_end}, ',
+              f'volume_shape: {volume_shape}, ',
               flush=True)
 
     # include channel in computing the blocks and for channels use a chunk of 1
@@ -128,14 +129,14 @@ def _ometif_to_n5_volume(input_path, output_path,
         block_stop = np.minimum(volume_end, block_start + block_size)
         block_slices = tuple([slice(start, stop)
                               for start, stop in zip(block_start, block_stop)])
-        block_shape = tuple([s.stop - s.start for s in block_slices])
         blocks.append((block_index, block_slices))
 
     processed_blocks = cluster_client.map(
         _process_block_data,
         blocks,
         tiff_input=input_path,
-        per_channel_outputs=channel_datasets)
+        per_channel_outputs=channel_datasets,
+        indexed_dims=indexed_dims)
 
     for f, r in as_completed(processed_blocks, with_results=True):
         if f.cancelled():
@@ -171,8 +172,9 @@ def _create_root_output(data_path, pixelResolutions=None):
         raise e
 
 
-def _process_block_data(block, tiff_input=None, per_channel_outputs=[]):
-    block_index, block_coords = block
+def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
+                        indexed_dims=None):
+    block_index, block_coords = block_info
     print(f'{time.ctime(time.time())} '
         f'Get block: {block_index}, from: {block_coords}',
         flush=True)
@@ -181,10 +183,19 @@ def _process_block_data(block, tiff_input=None, per_channel_outputs=[]):
         image_data = zarr.open(data_store, 'r')
         block_data = image_data[block_coords]
         for ch in range(len(per_channel_outputs)):
-            channel_data = block_data[ch]
+            ch_selection = tuple([slice(0,s) if i != indexed_dims['c'] 
+                                              else ch
+                                  for i,s in enumerate(block_data.shape)])
+
+            channel_data = block_data[ch_selection]
+            output_coords = tuple([block_coords[indexed_dims['z']],
+                                   block_coords[indexed_dims['y']],
+                                   block_coords[indexed_dims['x']]])
             print(f'{time.ctime(time.time())} '
-                f'Write ch {ch} from block {block_index}',
+                f'Write {channel_data.shape} block for {ch_selection} at {output_coords} ',
+                'from block {block_index}',
                 flush=True)
+
             output_block_coords = block_coords[1:]
             per_channel_outputs[ch][output_block_coords] = channel_data
 

@@ -133,8 +133,6 @@ def _ometif_to_n5_volume(input_path, output_path,
         block_shape = tuple([s.stop - s.start for s in block_slices])
         blocks.append((block_index, block_slices))
 
-    print('!!!!!!! ', blocks, flush=True)
-
     processed_blocks = cluster_client.map(
         _process_block_data,
         blocks,
@@ -307,19 +305,17 @@ def main():
     # so we need to reverse it to pass it in czyx order
     cropped_data_size = args.cropped_data_size[::-1]
     cropped_data_start = args.cropped_data_start[::-1]
-    persisted_blocks = _ometif_to_n5_volume(args.input_path,
-                                            args.output_path,
-                                            args.data_set,
-                                            compressor,
-                                            client,
-                                            data_start_param=cropped_data_start,
-                                            data_size_param=cropped_data_size,
-                                            chunk_size=zyx_chunk_size,
-                                            zscale=args.z_scale)
+    _ometif_to_n5_volume(args.input_path,
+                         args.output_path,
+                         args.data_set,
+                         compressor,
+                         client,
+                         data_start_param=cropped_data_start,
+                         data_size_param=cropped_data_size,
+                         chunk_size=zyx_chunk_size,
+                         zscale=args.z_scale)
 
-    print('Persisted blocks computation', persisted_blocks, flush=True)
-    r = client.compute(persisted_blocks).result()
-    print('Persisted blocks result', r, flush=True)
+    print('Completed OMETIFF to N5 for', args.input_path, flush=True)
 
 
 if __name__ == "__main__":

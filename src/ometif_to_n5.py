@@ -6,11 +6,12 @@ import dask.array as da
 import numpy as np
 import numcodecs as codecs
 import ome_types
+import traceback
 import time
 import yaml
 import zarr
 
-from dask.distributed import (Client, LocalCluster)
+from dask.distributed import (Client, LocalCluster, as_completed)
 from flatten_json import flatten
 from tifffile import TiffFile
 
@@ -24,6 +25,7 @@ def _inttuple(arg):
 
 def _ometif_to_n5_volume(input_path, output_path, 
                          data_set, compressor,
+                         cluster_client,
                          data_start_param=(), # data start point in czyx order
                          data_size_param=(), # data size param in czyx order
                          chunk_size=(128,128,128),
@@ -107,6 +109,8 @@ def _ometif_to_n5_volume(input_path, output_path,
     xyz_pixel_resolution = [scale['x'], scale['y'], scale['z']]
     output_container = _create_root_output(output_path,
                                            pixelResolutions=xyz_pixel_resolution)
+    # create per channel datasets
+    channel_datasets = []
     for c in range(n_channels):
         channel_dataset = output_container.require_dataset(
             f'c{c}/{data_set}',
@@ -116,21 +120,38 @@ def _ometif_to_n5_volume(input_path, output_path,
             dtype=data_type)
         # set pixel resolution for the channel dataset
         channel_dataset.attrs.update(pixelResolution=xyz_pixel_resolution)
+        channel_datasets.append(channel_dataset)
 
     print(f'Saving {nblocks} blocks to {output_path}', flush=True)
 
-    persisted_blocks = []
+    blocks = []
     for block_index in np.ndindex(*nblocks):
         block_start = volume_start + block_size * block_index
         block_stop = np.minimum(volume_end, block_start + block_size)
         block_slices = tuple([slice(start, stop)
                               for start, stop in zip(block_start, block_stop)])
         block_shape = tuple([s.stop - s.start for s in block_slices])
-        data_block = dask.delayed(_get_block_data)(
-            input_path,
-            block_index,
-            block_slices,
-        )
+        blocks.append((block_index, block_slices))
+
+    print('!!!!!!! ', blocks, flush=True)
+
+    processed_blocks = cluster_client.map(
+        _process_block_data,
+        blocks,
+        tiff_input=input_path,
+        per_channel_outputs=channel_datasets)
+
+    for f, r in as_completed(processed_blocks, with_results=True):
+        if f.cancelled():
+            exc = f.exception()
+            print(f'Invert block exception: {exc}', flush=True)
+            tb = f.traceback()
+            traceback.print_tb(tb)
+        else:
+            block_index = r
+            print(f'Finished processing block {block_index}', flush=True)
+
+
         block = da.from_delayed(data_block, shape=block_shape, dtype=data_type)
         for c in range(n_channels):
             dflag = dask.delayed(_save_block)(
@@ -171,15 +192,22 @@ def _create_root_output(data_path, pixelResolutions=None):
         raise e
 
 
-def _get_block_data(image_path, block_index, block_coords):
+def _process_block_data(block, tiff_input=None, per_channel_outputs=[]):
+    block_index, block_coords = block
     print(f'{time.ctime(time.time())} '
         f'Get block: {block_index}, from: {block_coords}',
         flush=True)
-    with TiffFile(image_path) as tif:
+    with TiffFile(tiff_input) as tif:
         data_store = tif.series[0].aszarr()
         image_data = zarr.open(data_store, 'r')
         block_data = image_data[block_coords]
-        return block_data
+        for ch in range(len(per_channel_outputs)):
+            channel_data = block_data[ch]
+            print(f'{time.ctime(time.time())} '
+                f'Write ch {ch} from block {block_index}',
+                flush=True)
+            output_block_coords = block_coords[1:]
+            per_channel_outputs[ch][output_block_coords] = channel_data
 
 
 def _save_block(block, block_index, block_coords,
@@ -283,6 +311,7 @@ def main():
                                             args.output_path,
                                             args.data_set,
                                             compressor,
+                                            client,
                                             data_start_param=cropped_data_start,
                                             data_size_param=cropped_data_size,
                                             chunk_size=zyx_chunk_size,

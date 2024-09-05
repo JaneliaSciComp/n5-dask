@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import argparse
-import dask
-import dask.array as da
 import numpy as np
 import numcodecs as codecs
 import ome_types
@@ -148,23 +146,6 @@ def _ometif_to_n5_volume(input_path, output_path,
         else:
             block_index = r
             print(f'Finished processing block {block_index}', flush=True)
-
-
-        block = da.from_delayed(data_block, shape=block_shape, dtype=data_type)
-        for c in range(n_channels):
-            dflag = dask.delayed(_save_block)(
-                block,
-                block_index,
-                block_slices,
-                indexed_dims=indexed_dims,
-                output_container=output_container,
-                data_set=data_set,
-                channel=c,
-            )
-            resolved_dflag = da.from_delayed(dflag, shape=(), dtype=np.uint16)
-            persisted_blocks.append(resolved_dflag)
-
-    return da.from_array(persisted_blocks, chunks=(4,))
 
 
 def czyx_to_actual_order(czyx, data, c_index, z_index, y_index, x_index):

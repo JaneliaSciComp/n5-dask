@@ -204,17 +204,17 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
 
 def _read_ch_blocks(tiff_input, block_coords, indexed_dims):
     blocks = []
-    with TiffFile(tiff_input) as tif:
+    with TiffFile(tiff_input, 'r') as tif:
         tifseries = tif.series[0]
         imgshape = tifseries.shape
         ch_slice = block_coords[indexed_dims['c']]
         z_slice = block_coords[indexed_dims['z']]
         y_slice = block_coords[indexed_dims['y']]
         x_slice = block_coords[indexed_dims['x']]
+        target_block_shape = (z_slice.stop - z_slice.start,
+                              y_slice.stop - y_slice.start,
+                              x_slice.stop - x_slice.start)
         for ch in range(ch_slice.start, ch_slice.stop):
-            target_block_shape = (z_slice.stop - z_slice.start,
-                                  y_slice.stop - y_slice.start,
-                                  x_slice.stop - x_slice.start)
             target_block = np.zeros(target_block_shape, dtype=tifseries.dtype)
             for z in range(z_slice.start, z_slice.stop):
                 if indexed_dims['z'] == 0:
@@ -224,6 +224,10 @@ def _read_ch_blocks(tiff_input, block_coords, indexed_dims):
                     coord_0 = ch
                     coord_1 = z
                 page_index = coord_0 * imgshape[1] + coord_1
+                if z == z_slice.start:
+                    print(f'First page index for block {block_coords} -> {page_index}', flush=True)
+                if z+1 == z_slice.stop:
+                    print(f'Last page index for block {block_coords} -> {page_index}', flush=True)
                 page = tifseries.pages[page_index]
                 page_img = page.asarray()
                 xy_coords = block_coords[2:]
@@ -233,7 +237,6 @@ def _read_ch_blocks(tiff_input, block_coords, indexed_dims):
             blocks.append(target_block)
 
         return blocks
-
 
 
 def main():

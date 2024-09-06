@@ -105,7 +105,7 @@ def _ometif_to_n5_volume(input_path, output_path,
                                         indexed_dims['c'], indexed_dims['z'],
                                         indexed_dims['y'], indexed_dims['x']))
     print(f'Partition {czyx_volume_shape} -> {czyx_nblocks} ({nblocks}) blocks ',
-          f'using {czyx_block_size} ({block_size}) block size'
+          f'using {czyx_block_size} ({block_size}) block size',
           flush=True)
     xyz_pixel_resolution = [scale['x'], scale['y'], scale['z']]
     output_container = _create_root_output(output_path,

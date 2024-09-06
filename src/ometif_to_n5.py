@@ -187,30 +187,23 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
     print(f'{time.ctime(time.time())} '
         f'Get block: {block_index}, from: {block_coords}',
         flush=True)
-    with TiffFile(tiff_input) as tif:
-        data_store = tif.series[0].aszarr()
-        image_data = zarr.open(data_store, 'r')
-        block_data = image_data[block_coords]
-        for ch in range(len(per_channel_outputs)):
-            ch_selection = tuple([slice(0,s) if i != indexed_dims['c'] 
-                                              else ch
-                                  for i,s in enumerate(block_data.shape)])
+    per_channel_blocks = _read_ch_blocks(tiff_input, block_coords, indexed_dims)
+    for ch in range(len(per_channel_outputs)):
+        output_block_coords = tuple([block_coords[indexed_dims['z']],
+                                     block_coords[indexed_dims['y']],
+                                     block_coords[indexed_dims['x']]])
+        print(f'{time.ctime(time.time())} '
+            f'Write {per_channel_blocks[ch].shape} block for {ch} '
+            f'at {output_block_coords} from block {block_index}',
+            flush=True)
 
-            channel_data = block_data[ch_selection]
-            output_block_coords = tuple([block_coords[indexed_dims['z']],
-                                         block_coords[indexed_dims['y']],
-                                         block_coords[indexed_dims['x']]])
-            print(f'{time.ctime(time.time())} '
-                f'Write {channel_data.shape} block for {ch_selection} '
-                f'at {output_block_coords} from block {block_index}',
-                flush=True)
+        per_channel_outputs[ch][output_block_coords] = per_channel_blocks[ch]
 
-            per_channel_outputs[ch][output_block_coords] = channel_data
-
-        return block_index
+    return block_index
 
 
-def _read_block(tiff_input, block_coords, indexed_dims):
+def _read_ch_blocks(tiff_input, block_coords, indexed_dims):
+    blocks = []
     with TiffFile(tiff_input) as tif:
         tifseries = tif.series[0]
         imgshape = tifseries.shape
@@ -236,6 +229,10 @@ def _read_block(tiff_input, block_coords, indexed_dims):
                 xy_coords = block_coords[2:]
                 xy_block = page_img[xy_coords]
                 target_block[z - z_slice.start] = xy_block
+
+            blocks.append(target_block)
+
+        return blocks
 
 
 

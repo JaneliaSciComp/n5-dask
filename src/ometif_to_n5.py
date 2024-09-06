@@ -187,7 +187,9 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
     print(f'{time.ctime(time.time())} '
         f'Get block: {block_index}, from: {block_coords}',
         flush=True)
-    per_channel_blocks = _read_ch_blocks(tiff_input, block_coords, indexed_dims)
+    per_channel_blocks = _read_blocks_per_channel_from_zarr_store(tiff_input,
+                                                                  block_coords,
+                                                                  indexed_dims)
     for ch in range(len(per_channel_outputs)):
         output_block_coords = tuple([block_coords[indexed_dims['z']],
                                      block_coords[indexed_dims['y']],
@@ -201,8 +203,29 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
 
     return block_index
 
+def _read_blocks_per_channel_from_zarr_store(tiff_input,
+                                             block_coords,
+                                             indexed_dims):
+    blocks = []
+    ch_index = indexed_dims['c']
+    ch_slice = block_coords[ch_index]
+    with TiffFile(tiff_input, 'r') as tif:
+        tifseries = tif.series[0]
+        tifstore = tifseries.aszarr()
+        image_data = zarr.open(tifstore, 'r')
+        block_data = image_data[block_coords]
+        for ch in range(ch_slice.start, ch_slice.stop):
+            ch_selection = tuple([slice(0,s) if i != ch_index else ch
+                                  for i,s in enumerate(block_data.shape)])
+            target_block = block_data[ch_selection]
+            blocks.append(target_block)
 
-def _read_ch_blocks(tiff_input, block_coords, indexed_dims):
+    return blocks
+
+
+def _read_blocks_per_channel_from_frames(tiff_input,
+                                         block_coords,
+                                         indexed_dims):
     blocks = []
     with TiffFile(tiff_input, 'r') as tif:
         tifseries = tif.series[0]

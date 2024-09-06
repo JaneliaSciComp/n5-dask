@@ -73,12 +73,12 @@ def _ometif_to_n5_volume(input_path, output_path,
 
         n_channels = data_shape[indexed_dims['c']]
 
-        volume_shape = (data_shape[indexed_dims['c']],
-                        data_shape[indexed_dims['z']],
-                        data_shape[indexed_dims['y']],
-                        data_shape[indexed_dims['x']])
-        volume_start = np.array(data_start)
-        volume_end = volume_start + volume_shape
+        czyx_volume_shape = (data_shape[indexed_dims['c']],
+                             data_shape[indexed_dims['z']],
+                             data_shape[indexed_dims['y']],
+                             data_shape[indexed_dims['x']])
+        czyx_volume_start = np.array(data_start)
+        czyx_volume_end = czyx_volume_start + czyx_volume_shape
 
         print(f'Input tiff info - ',
               f'ome: {ome.images[0]},',
@@ -88,9 +88,9 @@ def _ometif_to_n5_volume(input_path, output_path,
               f'start_point: {data_start}, ',
               f'shape: {data_shape}, ',
               f'channels: {n_channels}, ',
-              f'volume_start: {volume_start}, ',
-              f'volume_end: {volume_end}, ',
-              f'volume_shape: {volume_shape}, ',
+              f'volume_start: {czyx_volume_start}, ',
+              f'volume_end: {czyx_volume_end}, ',
+              f'volume_shape: {czyx_volume_shape}, ',
               flush=True)
 
     # include channel in computing the blocks and for channels use a chunk of 1
@@ -100,11 +100,13 @@ def _ometif_to_n5_volume(input_path, output_path,
     block_size = czyx_to_actual_order(czyx_block_size, np.empty_like(czyx_block_size),
                                       indexed_dims['c'], indexed_dims['z'],
                                       indexed_dims['y'], indexed_dims['x'])
-    czyx_nblocks = np.ceil(np.array(volume_shape) / czyx_chunk_size).astype(int)
+    czyx_nblocks = np.ceil(np.array(czyx_volume_shape) / czyx_chunk_size).astype(int)
     nblocks = tuple(czyx_to_actual_order(czyx_nblocks, [0, 0, 0, 0],
                                         indexed_dims['c'], indexed_dims['z'],
                                         indexed_dims['y'], indexed_dims['x']))
-    print(f'{volume_shape} -> {czyx_nblocks} ({nblocks}) blocks', flush=True)
+    print(f'Partition {czyx_volume_shape} -> {czyx_nblocks} ({nblocks}) blocks ',
+          f'using {czyx_block_size} ({block_size}) block size'
+          flush=True)
     xyz_pixel_resolution = [scale['x'], scale['y'], scale['z']]
     output_container = _create_root_output(output_path,
                                            pixelResolutions=xyz_pixel_resolution)
@@ -114,7 +116,7 @@ def _ometif_to_n5_volume(input_path, output_path,
         channel_dataset = output_container.require_dataset(
             f'c{c}/{data_set}',
             compressor=compressor,
-            shape=volume_shape[1:],
+            shape=czyx_volume_shape[1:],
             chunks=chunk_size,
             dtype=data_type)
         # set pixel resolution for the channel dataset
@@ -122,6 +124,13 @@ def _ometif_to_n5_volume(input_path, output_path,
         channel_datasets.append(channel_dataset)
 
     print(f'Saving {nblocks} blocks to {output_path}', flush=True)
+
+    volume_start = tuple(czyx_to_actual_order(czyx_volume_start, [0, 0, 0, 0],
+                                              indexed_dims['c'], indexed_dims['z'],
+                                              indexed_dims['y'], indexed_dims['x']))
+    volume_end = tuple(czyx_to_actual_order(czyx_volume_end, [0, 0, 0, 0],
+                                            indexed_dims['c'], indexed_dims['z'],
+                                            indexed_dims['y'], indexed_dims['x']))
 
     blocks = []
     for block_index in np.ndindex(*nblocks):
@@ -201,28 +210,33 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
         return block_index
 
 
-def _save_block(block, block_index, block_coords,
-                indexed_dims=None, output_container=None,
-                data_set='s0', channel=0):
+def _read_block(tiff_input, block_coords, indexed_dims):
+    with TiffFile(tiff_input) as tif:
+        tifseries = tif.series[0]
+        imgshape = tifseries.shape
+        ch_slice = block_coords[indexed_dims['c']]
+        z_slice = block_coords[indexed_dims['z']]
+        y_slice = block_coords[indexed_dims['y']]
+        x_slice = block_coords[indexed_dims['x']]
+        for ch in range(ch_slice.start, ch_slice.stop):
+            target_block_shape = (z_slice.stop - z_slice.start,
+                                  y_slice.stop - y_slice.start,
+                                  x_slice.stop - x_slice.start)
+            target_block = np.zeros(target_block_shape, dtype=tifseries.dtype)
+            for z in range(z_slice.start, z_slice.stop):
+                if indexed_dims['z'] == 0:
+                    coord_0 = z
+                    coord_1 = ch
+                else:
+                    coord_0 = ch
+                    coord_1 = z
+                page_index = coord_0 * imgshape[1] + coord_1
+                page = tifseries.pages[page_index]
+                page_img = page.asarray()
+                xy_coords = block_coords[2:]
+                xy_block = page_img[xy_coords]
+                target_block[z - z_slice.start] = xy_block
 
-    subpath = f'c{channel}/{data_set}'
-    ch_selection = tuple([slice(0,s) if i != indexed_dims['c'] 
-                                     else channel
-                          for i,s in enumerate(block.shape)])
-    output_block_index = tuple([block_index[indexed_dims['z']],
-                                block_index[indexed_dims['y']],
-                                block_index[indexed_dims['x']]])
-    output_coords = tuple([block_coords[indexed_dims['z']],
-                           block_coords[indexed_dims['y']],
-                           block_coords[indexed_dims['x']]])
-    output_block_data = block[ch_selection]
-
-    print(f'{time.ctime(time.time())} '
-          f'Write: {subpath}:{output_block_index}(ch selection:{ch_selection}):',
-          f'{block_coords}({block.shape}) -> {output_coords}({output_block_data.shape})',
-          flush=True)
-    output_container[subpath][output_coords] = output_block_data
-    return np.uint16(1)
 
 
 def main():

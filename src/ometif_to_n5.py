@@ -209,7 +209,7 @@ def _read_blocks_per_channel_from_zarr_store(tiff_input,
     blocks = []
     ch_index = indexed_dims['c']
     ch_slice = block_coords[ch_index]
-    with TiffFile(tiff_input, 'r') as tif:
+    with TiffFile(tiff_input) as tif:
         tifseries = tif.series[0]
         tifstore = tifseries.aszarr()
         image_data = zarr.open(tifstore, 'r')
@@ -227,7 +227,7 @@ def _read_blocks_per_channel_from_frames(tiff_input,
                                          block_coords,
                                          indexed_dims):
     blocks = []
-    with TiffFile(tiff_input, 'r') as tif:
+    with TiffFile(tiff_input) as tif:
         tifseries = tif.series[0]
         imgshape = tifseries.shape
         ch_slice = block_coords[indexed_dims['c']]

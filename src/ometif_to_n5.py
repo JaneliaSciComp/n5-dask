@@ -201,6 +201,7 @@ def _process_block_data(block_info, tiff_input=None, per_channel_outputs=[],
 
         per_channel_outputs[ch][output_block_coords] = per_channel_blocks[ch]
 
+    del per_channel_blocks
     return block_index
 
 def _read_blocks_per_channel_from_zarr_store(tiff_input,

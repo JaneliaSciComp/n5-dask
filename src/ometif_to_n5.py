@@ -321,7 +321,7 @@ def main():
         print(f'Use dask config: {args.dask_config}', flush=True)
         with open(args.dask_config) as f:
             dask_config = flatten(yaml.safe_load(f))
-            dask.config.set(dask_config)
+            dask.config.update_defaults(dask_config)
 
     if args.dask_scheduler:
         client = Client(args.dask_scheduler)

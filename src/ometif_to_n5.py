@@ -150,12 +150,14 @@ def _ometif_to_n5_volume(input_path, output_path,
     for f, r in as_completed(processed_blocks, with_results=True):
         if f.cancelled():
             exc = f.exception()
-            print(f'Process block exception: {exc}', flush=True)
+            print(f'{time.ctime(time.time())} Process block exception: {exc}',
+                  flush=True)
             tb = f.traceback()
             traceback.print_tb(tb)
         else:
             block_index = r
-            print(f'Finished processing block {block_index}', flush=True)
+            print(f'{time.ctime(time.time())} Finished processing block {block_index}',
+                  flush=True)
 
 
 def czyx_to_actual_order(czyx, data, c_index, z_index, y_index, x_index):

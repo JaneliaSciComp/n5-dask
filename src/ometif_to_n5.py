@@ -158,6 +158,7 @@ def _ometif_to_n5_volume(input_path, output_path,
             block_index = r
             print(f'{time.ctime(time.time())} Finished processing block {block_index}',
                   flush=True)
+            cluster_client.cancel(f)
 
 
 def czyx_to_actual_order(czyx, data, c_index, z_index, y_index, x_index):
